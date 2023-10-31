@@ -5,13 +5,15 @@ from JsonFileDocument import JsonFileDocument
 import PyPDF2
 from XmlHtmlDocument import XmlHtmlDocument
 from TokenProcessor import TokenProcessor,spanishToken,frenchToken
-from indexing import PositionalInvertedIndex
+from indexing import PositionalInvertedIndex,DiskPositionalInvertedIndex
 from docx import Document 
 from langdetect import detect
 from querying import BooleanQueryParser
 import sys
 from textblob import TextBlob
 from flask_cors import CORS
+from porter2stemmer import Porter2Stemmer
+
 
 
 app = Flask(__name__)
@@ -139,10 +141,52 @@ def load_files():
 
 
 
+def load_filesDB():
+    for i in range(len(['Data/txt'])):
+        documents['Data/txt']=LoadDocuments('Data/txt')
+    filesJsonDisk = DiskPositionalInvertedIndex('your_db_path.db', 'your_postings_path.bin', 'your_doc_weights_path.bin')
+    
+    for document_id, document in enumerate(documents["Data/txt"]):
+        data=GetTokenData(document)
+        print(data)
+        print(len(data["tokenData"]),len(data['indexAndToken']))
+        filesJsonDisk.add_document(data)
+    filesJsonDisk.close()
+
+    
+
+
 with app.app_context():
-        load_files() 
+        # load_files() 
+        load_filesDB()
    
 
+@app.route('/readDisk', methods=['POST'])
+def readDisk_string():
+    try:
+        # Get the JSON data from the request
+        data = request.get_json()
+        index = DiskPositionalInvertedIndex('your_db_path.db', "your_postings_path.bin", "your_doc_weights_path.bin")
+        if 'text' not in data:
+            return jsonify({'error': 'Missing "text" field in JSON data'}), 400
+        stopwords=Porter2Stemmer()
+        # Split the received string (assuming it's space-separated)
+        text = stopwords.stem(data['text'])
+        print(text)
+        doc_ids, positions = index.get_postings(text)
+        
+
+        if not positions:
+            response_data = {'data':[],"message":"Term not found in any documents","file":0}
+            index.close()
+
+        else:
+            response_data = {'data':positions,"message":"done","file":len(doc_ids)}
+            index.close()
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
     
 @app.route('/searchdata', methods=['POST'])
