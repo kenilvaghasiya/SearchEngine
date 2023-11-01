@@ -1,6 +1,5 @@
 import sqlite3
 import struct
-import os
 from math import sqrt
 
 class DiskPositionalInvertedIndex:
@@ -8,6 +7,8 @@ class DiskPositionalInvertedIndex:
         self.db_connection = sqlite3.connect(db_path)
         self.postings_file = open(postings_path, 'wb')
         self.doc_weights_file = open(doc_weights_path, 'wb')
+        self.postings_filerb = open(postings_path, 'rb')
+        self.doc_weights_filerb = open(doc_weights_path, 'rb')
         self.db_connection.execute('''
             CREATE TABLE IF NOT EXISTS vocabulary (
                 term TEXT PRIMARY KEY,
@@ -44,9 +45,10 @@ class DiskPositionalInvertedIndex:
                 postings_start = self.postings_file.tell()
                 self.db_connection.execute("INSERT INTO vocabulary VALUES (?, ?)", (term, postings_start))
 
-            # Save postings to the postings file
             postings_data = struct.pack('I', doc_id)
-            postings_data += struct.pack('s', doc_name.encode('utf-8'))  # Gap-encoded doc_id
+            doc_name_bytes = doc_name.encode('utf-8')
+            postings_data += struct.pack('I', len(doc_name_bytes))
+            postings_data += doc_name_bytes
             postings_data += struct.pack('I', term_frequency)
             postings_data += struct.pack(f'{term_frequency}H', *positions)
             self.postings_file.write(postings_data)
@@ -64,33 +66,29 @@ class DiskPositionalInvertedIndex:
             result = cursor.fetchone()
             if result:
                 postings_start = result[0]
-                with open("your_postings_path.bin", 'rb') as file:
-                    file.seek(postings_start)
-                    doc_ids = []
-                    positions = []
+                self.postings_filerb.seek(postings_start)
+                doc_ids = []
+                positions = []
 
-                    while True:
-                        try:
-                            doc_id = struct.unpack('I', file.read(4))[0]
-                            doc_name_length = struct.unpack('I', file.read(4))[0]
-                            doc_name = struct.unpack(f'{doc_name_length}s', file.read(doc_name_length))[0].decode('utf-8')
-                            term_frequency = struct.unpack('I', file.read(4))[0]
+                while True:
+                    try:
+                        doc_id = struct.unpack('I', self.postings_filerb.read(4))[0]
+                        doc_name_length = struct.unpack('I', self.postings_filerb.read(4))[0]
+                        doc_name = struct.unpack(f'{doc_name_length}s', self.postings_filerb.read(doc_name_length))[0].decode('utf-8')
+                        term_frequency = struct.unpack('I', self.postings_filerb.read(4))[0]
 
-                            # Read positions as a list of integers
-                            term_positions = struct.unpack(f'{term_frequency}H', file.read(2 * term_frequency))
+                        # Read positions as a list of integers
+                        term_positions = struct.unpack(f'{term_frequency}H', self.postings_filerb.read(2 * term_frequency))
 
-                            doc_ids.append(doc_id)
-                            positions.append((doc_name, term_frequency, term_positions))
-                        except struct.error:
-                            break
-                    file.close()
+                        doc_ids.append(doc_id)
+                        positions.append((doc_name, term_frequency, list(term_positions)))  # Convert to a list
+
+                    except struct.error:
+                        break
+
                 return doc_ids, positions
         return [], []
 
-
-
-  
-        
         
         
     def close(self):
@@ -102,3 +100,41 @@ class DiskPositionalInvertedIndex:
     def get_doc_length(self, doc_id):
         return self.doc_id_mapping.get(doc_id, 0)
 
+
+index = DiskPositionalInvertedIndex('index.db', "postings.bin", "doc_weights.bin")
+
+# Sample documents
+documents = [
+    {
+        'fileName': 'doc1.txt',
+        'tokenData': ['apple', 'banana', 'cherry']
+    },
+    {
+        'fileName': 'doc2.txt',
+        'tokenData': ['banana', 'date', 'fig',"sdasd"]
+    },
+    {
+        'fileName': 'doc3.txt',
+        'tokenData': ['apple', 'banana', 'grape',"fig","grape"]
+    }
+]
+
+# Add documents to the index
+for doc in documents:
+    index.add_document(doc)
+
+# Close the index to save the data
+
+term_to_search = 'banana'
+doc_ids, positions = index.get_postings(term_to_search)
+print(doc_ids, positions)
+
+if doc_ids:
+    print(f"Postings for '{term_to_search}':")
+    for doc_id, position_info in zip(doc_ids, positions):
+        doc_name, term_frequency, term_positions = position_info
+        print(f"Doc ID: {doc_id}, Doc Name: {doc_name}, Term Frequency: {term_frequency}, Positions: {term_positions}")
+else:
+    print(f"'{term_to_search}' not found in the index.")
+
+index.close()
