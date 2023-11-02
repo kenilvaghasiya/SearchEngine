@@ -68,3 +68,18 @@ class TokenProcessor:
                 tokens_with_positions.append({"data":self.normalize_type(self.cleantoken(token)),"position": position})
                 position += 1  # Increment position for the next token
         return tokens_with_positions
+    
+    
+    def get_tokens_and_sqlite(self, text):
+        words =  text.split()
+        if not text:
+            return []
+        tokens_with_positions = []
+        position = 0
+        for word in words:
+            tokens = self.process_token(word)
+            for token in tokens:
+                # Append token and its position
+                tokens_with_positions.append(self.normalize_type(self.cleantoken(token)))
+                position += 1  # Increment position for the next token
+        return tokens_with_positions
