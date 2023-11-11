@@ -111,7 +111,6 @@ def tokenize_with_positions(document):
 def load_filesDB():
     for i in range(len(['Data/json'])):     
         documents['Data/json']=LoadDocuments('Data/json')
-    print(documents["Data/json"])
     for document_id, document in enumerate(documents["Data/json"]):
         data=GetTokenData(document)
         positions = tokenize_with_positions(data["sqlitesDatatoken"])

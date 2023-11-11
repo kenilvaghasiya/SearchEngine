@@ -3,6 +3,31 @@ import sqlite3
 from indexing import PositionalInvertedIndexSqlite
 from porter2stemmer import Porter2Stemmer
 
+def encode_number(number):
+    if number < 0:
+        raise ValueError("Negative numbers cannot be encoded using this method.")
+
+    bytes_list = []
+    while True:
+        byte = number & 0x7F  # Get the last 7 bits
+        number >>= 7
+        if number == 0:
+            bytes_list.append(byte)  # Last byte, do not set the high bit
+            break
+        else:
+            bytes_list.append(byte | 0x80)  # Set the high bit
+    return bytes_list 
+
+def decode_bytes(byte_stream):
+    number = 0
+    shift = 0
+    for byte in byte_stream:
+        number |= (byte & 0x7F) << shift
+        if (byte & 0x80) == 0:
+            break
+        shift += 7
+    return number
+
 class DiskIndexWriter:
     def __init__(self, index: PositionalInvertedIndexSqlite, db_path: str, postings_file: str):
         self.index = index
@@ -21,37 +46,28 @@ class DiskIndexWriter:
     def write_index(self):
         with open(self.postings_file, 'wb') as file:
             for term, postings in self.index.index.items():
-                # Get the byte position for this term
                 byte_position = file.tell()
 
-                # Write the document frequency (number of documents where the term appears)
-                packed_data = struct.pack("I", len(postings))
-                file.write(packed_data)
+                # Variable byte encode the document frequency
+                file.write(bytes(encode_number(len(postings))))
 
                 last_doc_id = 0
-                print(postings)
                 for doc_id, positions in postings:
-                    print(term,doc_id,positions)
-                    # Write the docID gap
-                    packed_data = struct.pack("I", doc_id)
-                    file.write(packed_data)
-                    last_doc_id= doc_id+last_doc_id
+                    # Encode and write the gap between document IDs
+                    file.write(bytes(encode_number(doc_id)))
+                    last_doc_id = doc_id
 
-                    # Write the term frequency for this document (number of times the term appears in the document)
-                    packed_data = struct.pack("I", len(positions))
-                    file.write(packed_data)
+                    # Encode and write the term frequency
+                    file.write(bytes(encode_number(len(positions))))
 
-                    # Write the positions as gaps
                     last_position = 0
                     for pos in positions:
-                        packed_data = struct.pack("I", pos - last_position)
-                        file.write(packed_data)
+                        # Encode and write the gap between positions
+                        file.write(bytes(encode_number(pos - last_position)))
                         last_position = pos
 
-                # Save term and its byte position to the database
                 self.conn.execute("INSERT OR REPLACE INTO vocab_term_mapping (term, byte_position) VALUES (?, ?)", (term, byte_position))
                 self.conn.commit()
-
     
     def close(self):
         self.conn.close()
@@ -74,24 +90,24 @@ class DiskPositionalIndex():
         with open(self.postings_file, 'rb') as file:
             file.seek(byte_position)
 
-            dft_data = file.read(4)
-            dft = struct.unpack("I", dft_data)[0]
+            # Decode the document frequency
+            dft = decode_bytes(iter(lambda: ord(file.read(1)), 0))
 
             last_doc_id = 0
             for _ in range(dft):
-                doc_id_gap_data = file.read(4)
-                doc_id_gap = struct.unpack("I", doc_id_gap_data)[0]
+                # Decode the document ID gap
+                doc_id_gap = decode_bytes(iter(lambda: ord(file.read(1)), 0))
                 doc_id =  doc_id_gap
                 last_doc_id = doc_id
 
-                tftd_data = file.read(4)
-                tftd = struct.unpack("I", tftd_data)[0]
+                # Decode the term frequency
+                tftd = decode_bytes(iter(lambda: ord(file.read(1)), 0))
 
                 positions = []
                 last_position = 0
                 for _ in range(tftd):
-                    pos_gap_data = file.read(4)
-                    pos_gap = struct.unpack("I", pos_gap_data)[0]
+                    # Decode the position gap
+                    pos_gap = decode_bytes(iter(lambda: ord(file.read(1)), 0))
                     position = last_position + pos_gap
                     positions.append(position)
                     last_position = position
@@ -99,7 +115,6 @@ class DiskPositionalIndex():
                 postings.append((doc_id, positions))
 
         return postings
-
     def phrase_intersect(self, postings1, postings2, distance=1):
 
         results = []
