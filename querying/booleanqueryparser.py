@@ -99,8 +99,6 @@ class BooleanQueryParser:
         return result
 
     def build_query_tree(self, components):
-        # Implement logic to build a query tree from the components
-        # This is a simplified example; you may need to handle operator precedence and grouping
         stack = []
         output = []
 
@@ -211,51 +209,12 @@ class BooleanQueryParser:
         duplicates = [value for value in postings1 if value in postings2]
         return duplicates
     
-    # def and_merge(self, postings1, postings2):
-    #     print(postings1)
-    #     print(postings2hell)
-    #     result = []
-    #     i, j = 0, 0
-
-    #     while i < len(postings1) and j < len(postings2):
-    #         doc_id1 = postings1[i]
-    #         doc_id2 = postings2[j]
-
-    #         if doc_id1 == doc_id2:
-    #             result.append(doc_id1)
-    #             i += 1
-    #             j += 1
-    #         elif doc_id1 < doc_id2:
-    #             i += 1
-    #         else:
-    #             j += 1
-
-    #     return result
-
     def or_merge(self, postings1, postings2):
         # Implement "OR" merge logic
 
         result =list(set(postings1 + postings2))
         return result
     
-    # def or_merge(self, postings1, postings2):
-    #     # Implement "OR" merge logic
-    #     result = []
-    #     i, j = 0, 0
-    #     while i < len(postings1) and j < len(postings2):
-    #         if postings1[i] == postings2[j]:
-    #             result.append(postings1[i])
-    #             i += 1
-    #             j += 1
-    #         elif postings1[i] < postings2[j]:
-    #             result.append(postings1[i])
-    #             i += 1
-    #         else:
-    #             result.append(postings2[j])
-    #             j += 1
-    #     result.extend(postings1[i:])
-    #     result.extend(postings2[j:])
-    #     return result
 
     def phrase_merge(self, postings1, postings2):
         if postings1 is None or postings2 is None:
@@ -271,9 +230,6 @@ class BooleanQueryParser:
                 result.append(postings2_index[(filename, index + 1)])
 
         return result
-
-
-
 
 class TermLiteral:
     def __init__(self, term):
