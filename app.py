@@ -69,28 +69,28 @@ def LoadDocuments(directory_path):
 def GetTokenData(rowdata):
     # Check if rowdata['body'] is empty or None
     if not rowdata['body']:
-        return {"fileName": rowdata["title"], "tokenData": []}
+        return {"fileName": rowdata["title"], "tokenData": [],"indexAndToken":[],"sqlitesDatatoken":[]}
     resulting_types=[]
     detected_language = detect(rowdata['body'])
     print(f"\n\nThe detected language is: {detected_language}\n\n") 
 
-    if detected_language == "en":
+    if True:
         token_processor = TokenProcessor()
         resulting_types = token_processor.process_token(rowdata['body'])
         resulting_terms = [token_processor.normalize_type(t) for t in resulting_types]
         # filtered_terms = token_processor.remove_stopwords(resulting_types)
         return {"fileName": rowdata["title"], "tokenData": resulting_terms , "indexAndToken":token_processor.get_tokens_and_positions(rowdata['body']),"sqlitesDatatoken":token_processor.get_tokens_and_sqlite(rowdata['body'])}
     
-    elif detected_language == "es":
-        processor = spanishToken()
-        spanish_tokens, spanish_terms = processor.process_text(rowdata['body'])
-        return {"fileName": rowdata["title"], "tokenData": spanish_tokens,"indexAndToken":[],"sqlitesDatatoken":[]}
-    elif detected_language == "fr":
-        processor = frenchToken()
-        fr_tokens, fr_terms = processor.process_text(rowdata['body'])
-        return {"fileName": rowdata["title"], "tokenData": fr_tokens,"indexAndToken":[],"sqlitesDatatoken":[]}
-    else:
-        return {"fileName": rowdata["title"], "tokenData": [],"indexAndToken":[],"sqlitesDatatoken":[]}
+    # elif detected_language == "es":
+    #     processor = spanishToken()
+    #     spanish_tokens, spanish_terms = processor.process_text(rowdata['body'])
+    #     return {"fileName": rowdata["title"], "tokenData": spanish_tokens,"indexAndToken":[],"sqlitesDatatoken":[]}
+    # elif detected_language == "fr":
+    #     processor = frenchToken()
+    #     fr_tokens, fr_terms = processor.process_text(rowdata['body'])
+    #     return {"fileName": rowdata["title"], "tokenData": fr_tokens,"indexAndToken":[],"sqlitesDatatoken":[]}
+    # else:
+    #     return {"fileName": rowdata["title"], "tokenData": [],"indexAndToken":[],"sqlitesDatatoken":[]}
 
 
 
@@ -152,6 +152,14 @@ def convert_text_to_query_format(text):
             
         print(terms,operations)
         return terms, operations
+    
+def convert_text_to_query_formatfor_rankquery(text):
+        result2 = re.findall(r'\w+|AND|OR|NOT|"[^"]+"|[+-]', text)
+        stemmer = Porter2Stemmer()
+        result=[]
+        for i in range(len(result2)):
+            result.append(stemmer.stem(result2[i]))
+        return result
 
 @app.route('/searchdata', methods=['POST'])
 def readDisk_string():
@@ -164,13 +172,38 @@ def readDisk_string():
         disk_index = DiskPositionalIndex("vocab_term_mapping.db", "postings.bin")
         terms, operations = convert_text_to_query_format(text)
         result = disk_index.query(terms, operations)
-        ids1 = [str(item[0])+'.json' for item in result]
-        print(ids1)
+        ids1 = [{"doc_id":str(item[0])+'.json'} for item in result]
         
         if not ids1:
             response_data = {'data':[],"message":"Term not found in any documents","file":0}
         else:
             response_data = {'data':ids1,"message":"done","file":len(ids1)}
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+    
+    
+@app.route('/rankquery', methods=['POST'])
+def rankquery():
+    try:
+        # Get the JSON data from the request
+        data = request.get_json()
+        if 'text' not in data:
+            return jsonify({'error': 'Missing "text" field in JSON data'}), 400
+        text=data['text']
+        type=data['type']
+        
+        disk_index = DiskPositionalIndex("vocab_term_mapping.db", "postings.bin")
+        terms = convert_text_to_query_formatfor_rankquery(text)
+        
+        result = disk_index.queryRank(terms,type)
+        
+        if not result:
+            response_data = {'data':[],"message":"Term not found in any documents","file":0}
+        else:
+            response_data = {'data':result,"message":"done","file":len(result)}
         return jsonify(response_data), 200
 
     except Exception as e:

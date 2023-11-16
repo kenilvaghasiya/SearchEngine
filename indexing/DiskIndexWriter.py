@@ -2,6 +2,11 @@ import struct
 import sqlite3
 from indexing import PositionalInvertedIndexSqlite
 from porter2stemmer import Porter2Stemmer
+from JsonFileDocument import JsonFileDocument
+import math
+import os
+import numpy as np
+import json
 
 def encode_number(number):
     if number < 0:
@@ -33,6 +38,9 @@ class DiskIndexWriter:
         self.index = index
         self.conn = sqlite3.connect(db_path)
         self.postings_file = postings_file
+        self.total_length={}
+        self.total_length_LD={}
+        
         # self.conn.execute("DROP TABLE IF EXISTS vocab_term_mapping")
         # self.conn.execute("""
         #     CREATE TABLE vocab_term_mapping (
@@ -40,11 +48,27 @@ class DiskIndexWriter:
         #         byte_position INTEGER
         #     )
         # """)
+        # self.conn.execute("DROP TABLE IF EXISTS All_length")
+        # self.conn.execute("""
+        #     CREATE TABLE All_length (
+        #         id TEXT PRIMARY KEY,
+        #         All_length INTEGER
+        #     )
+        # """)
+        # self.conn.execute("DROP TABLE IF EXISTS total_length")
+        # self.conn.execute("""
+        #     CREATE TABLE total_length (
+        #         id TEXT PRIMARY KEY,
+        #         total_position INTEGER,
+        #         ld REAL
+        #     )
+        # """)
 
         self.conn.commit()
     
     def write_index(self):
         with open(self.postings_file, 'wb') as file:
+            All_length=0
             for term, postings in self.index.index.items():
                 byte_position = file.tell()
 
@@ -56,6 +80,14 @@ class DiskIndexWriter:
                     # Encode and write the gap between document IDs
                     file.write(bytes(encode_number(doc_id)))
                     last_doc_id = doc_id
+                    if doc_id in self.total_length:
+                        self.total_length[doc_id]+=len(positions)
+                    else:
+                        self.total_length[doc_id]=len(positions)
+                    if doc_id in self.total_length_LD:
+                        self.total_length_LD[doc_id]+=(1+math.log(len(positions)))*(1+math.log(len(positions)))
+                    else:
+                        self.total_length_LD[doc_id]=(1+math.log(len(positions)))*(1+math.log(len(positions)))
 
                     # Encode and write the term frequency
                     file.write(bytes(encode_number(len(positions))))
@@ -68,6 +100,14 @@ class DiskIndexWriter:
 
                 self.conn.execute("INSERT OR REPLACE INTO vocab_term_mapping (term, byte_position) VALUES (?, ?)", (term, byte_position))
                 self.conn.commit()
+            for id, total_position in  self.total_length.items():
+                All_length += total_position
+                self.conn.execute("INSERT OR REPLACE INTO total_length (id, total_position,ld) VALUES (?, ?,?)", (id, total_position,np.sqrt(self.total_length_LD[id])))
+                self.conn.commit()
+            self.conn.execute("INSERT OR REPLACE INTO All_length (id, All_length) VALUES (?, ?)", (1, All_length))
+            self.conn.commit()
+                
+            
     
     def close(self):
         self.conn.close()
@@ -76,7 +116,29 @@ class DiskPositionalIndex():
     def __init__(self, db_path: str, postings_file: str):
         self.conn = sqlite3.connect(db_path)
         self.postings_file = postings_file
+        self.rankQuery = {}
+        self.total_len =self.conn.execute("SELECT * FROM All_length").fetchone()
+        self.doctotal_len = {int(id_str): (value, ld) for id_str, value, ld in self.conn.execute("SELECT * FROM total_length").fetchall()}
 
+        
+        
+    def calculate_wqtOkapi(self, df_t,N):
+   
+        return max(0.1, np.log((N - df_t + 0.5) / (df_t + 0.5)))
+    
+    def calculate_wdtOkapi(self,tf_td, docLength_d, avgDocLength):
+       
+        K = 1.2 * ((0.25) + (0.75 * (docLength_d / avgDocLength)))
+        return (2.2 * tf_td) / (K + tf_td)
+
+        
+    def _calculate_wqt(self, df_t, N):
+        # Implements the given formula for wq,t
+        return np.log(1 + (N / df_t))
+    
+    def calculate_wdt(tf):
+        return 1 + np.log(tf)
+    
     def get_postings(self, term):
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM vocab_term_mapping WHERE term=?", (term,))
@@ -92,7 +154,6 @@ class DiskPositionalIndex():
 
             # Decode the document frequency
             dft = decode_bytes(iter(lambda: ord(file.read(1)), 0))
-
             last_doc_id = 0
             for _ in range(dft):
                 # Decode the document ID gap
@@ -102,7 +163,8 @@ class DiskPositionalIndex():
 
                 # Decode the term frequency
                 tftd = decode_bytes(iter(lambda: ord(file.read(1)), 0))
-
+                wdt= 1 + np.log(tftd)
+                
                 positions = []
                 last_position = 0
                 for _ in range(tftd):
@@ -115,6 +177,7 @@ class DiskPositionalIndex():
                 postings.append((doc_id, positions))
 
         return postings
+    
     def phrase_intersect(self, postings1, postings2, distance=1):
 
         results = []
@@ -134,8 +197,6 @@ class DiskPositionalIndex():
         print(results)
         return results
         
-
-
     def merge_postings(self, postings1, postings2, operation):
 
         if operation == "AND":
@@ -209,8 +270,124 @@ class DiskPositionalIndex():
             postings = self.merge_postings(postings, next_postings, operations[i-1])
 
         return postings
+  
+  
+    def get_postings_rank(self, term):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM vocab_term_mapping WHERE term=?", (term,))
+        
+        result = cur.fetchone()
+        if not result:
+            return []
+        print(self.total_len[1])
+        byte_position = result[1]
+        postings = []
 
+        with open(self.postings_file, 'rb') as file:
+            file.seek(byte_position)
 
+            # Decode the document frequency
+            dft = decode_bytes(iter(lambda: ord(file.read(1)), 0))
+            print(term,"DFT",dft)
+            
+            calculate_wqt =self._calculate_wqt(dft,36803)
+            calculate_wqtOkapi =self.calculate_wqtOkapi(dft,36803)
+            print(term,"Wqt",calculate_wqt)
+            last_doc_id = 0
+            for _ in range(dft):
+                # Decode the document ID gap
+                doc_id_gap = decode_bytes(iter(lambda: ord(file.read(1)), 0))
+             
+                doc_id =  doc_id_gap
+                last_doc_id = doc_id
+
+                # Decode the term frequency
+                tftd = decode_bytes(iter(lambda: ord(file.read(1)), 0))
+                wdt= 1 + np.log(tftd)
+                calculate_wdtOkapi=self.calculate_wdtOkapi(tftd,self.doctotal_len[doc_id][0],(self.total_len[1]/36803))
+                
+                if(doc_id)==21744:
+                               print("wdt: ",wdt,tftd)
+                
+                positions = []
+                last_position = 0
+                for _ in range(tftd):
+                    # Decode the position gap
+                    pos_gap = decode_bytes(iter(lambda: ord(file.read(1)), 0))
+                    position = last_position + pos_gap
+                    positions.append(position)
+                    last_position = position
+                
+                if doc_id in self.rankQuery:
+                            # Existing entry: Update A_d and ld
+                            self.rankQuery[doc_id]['A_d'] += wdt * calculate_wqt
+                            self.rankQuery[doc_id]['ld'] += wdt * wdt
+                            self.rankQuery[doc_id]['Okapi'] += calculate_wdtOkapi*calculate_wqtOkapi
+                            
+                            if(doc_id)==21744:
+                                print("2",term, wdt * calculate_wqt, wdt * wdt)
+                else:
+                            # New entry: Add to rankQuery
+                            if(doc_id)==21744:
+                                print("1",term, wdt * calculate_wqt, wdt * wdt)
+                                
+                            self.rankQuery[doc_id] = {
+                                'tftd': tftd,
+                                'A_d': wdt * calculate_wqt,
+                                'ld': wdt * wdt,
+                                'score':0,
+                                'Okapi':calculate_wdtOkapi*calculate_wqtOkapi,
+                                "wdt":wdt
+                                
+                            }
+                    
+
+    
+    def queryRank(self, terms,type):
+        if not terms:
+            return []
+        result={}
+        for i in range(0,len(terms)):
+            self.get_postings_rank(terms[i])
+        intermediate_results=[]
+        for doc_id, doc_data in  self.rankQuery.items():
+            A_d = doc_data["A_d"]
+            ld = doc_data["ld"]
+            tftd = doc_data["tftd"]
+            Okapi=doc_data["Okapi"]
+            wdt=doc_data["wdt"]
+            
+            score = A_d / self.doctotal_len[doc_id][1]  # Ensure ld is not zero in real scenario
+            intermediate_results.append({
+                "doc_id": str(doc_id)+'.json',
+                "A_d": A_d,
+                "ld":  self.doctotal_len[doc_id][1],
+                "score": score,
+                'Okapi':Okapi,
+                'wdt':wdt
+            })
+
+        # Sorting the intermediate results by score in descending order
+        if type=="okapi":
+            intermediate_results.sort(key=lambda x: x["Okapi"], reverse=True)
+        else:
+            intermediate_results.sort(key=lambda x: x["score"], reverse=True)
+            
+            
+
+        # Retrieve file names for only the top 10 results
+        finalresult = []
+        for item in intermediate_results[:100]:
+            doc_id = item["doc_id"]
+            file_path = os.path.join('Data/json', doc_id)
+            json_document = JsonFileDocument(file_path)
+            if json_document.get_title():
+                item["name"] =json_document.get_title()
+                finalresult.append(item)
+
+        return finalresult
+
+        
     
     
     def close(self):

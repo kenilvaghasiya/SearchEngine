@@ -71,9 +71,9 @@ class TokenProcessor:
     
     
     def get_tokens_and_sqlite(self, text):
-        words =  text.split()
-        if not text:
+        if len(text)==0 or text==None:
             return []
+        words =  text.split()
         tokens_with_positions = []
         position = 0
         for word in words:
