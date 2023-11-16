@@ -113,7 +113,9 @@ if __name__ == "__main__":
         }
     ]
 
-    kgram_index = KGramIndex(k=4)
+
+    kgram_index = KGramIndex(k=2)
+
 
     for obj in objects:
         kgram_index.add_object(obj)
