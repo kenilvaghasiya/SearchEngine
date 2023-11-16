@@ -115,7 +115,6 @@ class DiskPositionalIndex():
                 for pos in positions:
                     if pos + 1 in postings2_dict[doc_id]:
                         results.append((doc_id, [pos+1]))
-                        # break  # To ensure unique doc_ids in the result, without repetition
         print(results)
         return results
         
