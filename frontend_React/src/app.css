@@ -1,0 +1,108 @@
+.NavbarCSS{
+    width: 100%;
+    display: flex;
+    height: 100px;
+    justify-content: center;
+    align-items: center;
+}
+
+.App{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.mainNavbarCSS{
+    width: 80%;
+    height: 60px;
+    border-radius: 15px;
+    box-shadow: rgba(50, 50, 93, 0.25) 0px 2px 5px -1px, rgba(0, 0, 0, 0.3) 0px 1px 3px -1px;
+    background-color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding:5px
+}
+
+.formSearchbar{
+    width: 85%;
+    height: 50px;
+    text-decoration: none;
+    border: none;
+    background-color: whitesmoke;
+    border-radius: 10px;
+    padding-left: 10px;
+    margin-right: 5px;
+}
+
+.formSearchbar:focus-visible{
+    border: none;
+    text-decoration: none;
+
+}
+
+.formSearchbar:focus{
+    border: none;
+    text-decoration: none;
+
+}
+
+.formSearchbar:active{
+    border: none;
+    text-decoration: none;
+
+}
+
+.mainTable{
+    margin-top: 10px;
+}
+
+.totalFileSection{
+    display: flex;
+    flex-direction: row;
+    padding: 10px;border-radius: 10px;
+    border: 1px solid gray;
+    font-size: 18px;
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: rgb(228, 228, 228);
+}
+
+
+
+
+.formSearchbarBtn{
+    min-height: 50px;
+    border: none;
+    width: 13%;
+    background-color: bisque;
+    border-radius: 10px;
+}
+
+.btnSection{
+    display: flex;
+    flex-direction: row;
+
+}
+
+.btnFiles{
+    padding: 15px 30px;
+    background-color: whitesmoke;
+    margin: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: Arial, Helvetica, sans-serif;
+    
+}
+
+.btnFiles:hover{
+ background-color: rgb(144, 164, 255);   
+ color: whitesmoke; 
+}
+
+.actClass{
+ background-color: rgb(144, 164, 255);    
+ color: whitesmoke; 
+
+
+}
