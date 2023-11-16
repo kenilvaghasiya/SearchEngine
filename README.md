@@ -1,5 +1,5 @@
 # asdMain
-#Server Code 
+# Server Code 
     set up Code 
 
     Step 1:   pip install Flask
@@ -12,7 +12,7 @@
 
     step 5:   FLASK_APP=app.py flask run
 
-#Front End Code 
+# Front End Code 
 
     Step 1: go ./frontend_React  
 
